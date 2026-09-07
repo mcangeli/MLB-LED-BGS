@@ -1,64 +1,75 @@
-# Green Monster Scoreboard v1.0.1
+# Green Monster Scoreboard v1.0.2
 
-This is a troubleshooting-focused rebuild of the Bullpen plugin.
+## Important configuration fix
 
-## What changed from 1.0.0
+v1.0.0/v1.0.1 defaulted to the Boston Red Sox when the plugin did not receive a
+`team` setting. That made a misplaced config look like the plugin was working
+but ignoring the selected team.
 
-- `can_render()` now always returns `True`.
-- No-game, invalid-team, and API-error states render visibly on the panel instead of allowing the screen to disappear from rotation.
-- Team IDs/abbreviations are resolved locally first, reducing initialization failure risk.
-- Renderer geometry is fixed for the most common 64x32 board instead of deriving spacing from font metadata.
-- The entry point and class structure mirror the official Bullpen example plugin.
-- Added simple commands below to verify that Bullpen sees the installed entry point.
+v1.0.2 removes the Boston default entirely.
 
-## Install / upgrade
+Bullpen passes this plugin ONLY the contents of:
 
-From the scoreboard directory:
+    config.json -> plugins -> green_monster
 
-```bash
-sudo ./venv/bin/pip uninstall -y mlb-led-scoreboard-green-monster
-sudo ./venv/bin/pip install /path/to/green-monster-scoreboard-v1.0.1
-```
-
-If installing from GitHub, update your repo and use:
-
-```bash
-sudo ./venv/bin/pip install --upgrade --force-reinstall git+https://github.com/YOUR-USER/YOUR-REPO.git
-```
-
-## Verify registration
-
-```bash
-./venv/bin/python -c "from importlib.metadata import entry_points; print([(e.name,e.value) for e in entry_points(group='bullpen.mlbled.plugin') if 'green' in e.name])"
-```
-
-Expected output contains:
-
-```text
-('green_monster', 'mlb_led_scoreboard_green_monster:load')
-```
-
-Then verify imports:
-
-```bash
-./venv/bin/python -c "import mlb_led_scoreboard_green_monster as p; print(p.load())"
-```
-
-## config.json
+Therefore the supported configuration is:
 
 ```json
-"plugins": {
-  "green_monster": {
-    "team": "BOS",
-    "refresh_rate": 10,
-    "background": [18, 83, 55],
-    "text": [238, 231, 198],
-    "dim_text": [105, 117, 91]
+{
+  "plugins": {
+    "green_monster": {
+      "team": "PHI",
+      "refresh_rate": 10,
+      "background": [18, 83, 55],
+      "text": [238, 231, 198],
+      "dim_text": [105, 117, 91]
+    }
   }
 }
 ```
 
-For initial troubleshooting, make the screen unconditional:
+You may also use a team name or MLB team id:
+
+```json
+"team": "Phillies"
+```
+
+```json
+"team": 143
+```
+
+For convenience, v1.0.2 also accepts:
+
+```json
+"teams": ["PHI"]
+```
+
+inside `plugins.green_monster`, but `team` is preferred.
+
+### This will NOT configure the plugin
+
+Putting the team on the rotation screen does not become `plugin_config`:
+
+```json
+{
+  "kind": "green_monster",
+  "team": "PHI"
+}
+```
+
+Similarly, this is the wrong plugin key:
+
+```json
+"plugins": {
+  "green-monster": {
+    "team": "PHI"
+  }
+}
+```
+
+The key must be exactly `green_monster`.
+
+## Rotation
 
 ```json
 {
@@ -67,11 +78,39 @@ For initial troubleshooting, make the screen unconditional:
 }
 ```
 
-Put it near the beginning of `rotation.screens`. Do NOT give it a `required_status`,
-`teams`, `priority`, or `with_priority` until you have confirmed it appears.
+## Diagnostics
 
-Restart the scoreboard service afterward.
+If `team` is missing, the board now shows:
 
-If the API/team lookup fails, v1.0.1 should still display a green screen saying
-`GREEN MONSTER` followed by `API ERR`, `BAD TEAM`, or `NO GAME`. If you see that,
-registration and rendering are working and the remaining issue is data/configuration.
+    GREEN
+    MONSTER
+    CONFIG ERR
+
+instead of silently using Boston.
+
+If a configured team cannot be resolved, it shows `BAD TEAM`.
+
+## Confirm the setting the running plugin sees
+
+With `"debug": true` in config.json, startup logs include:
+
+    Green Monster configured team: PHI
+
+You can also test the Bullpen configuration path directly by temporarily adding
+a very distinctive team such as `"team": "LAD"` and checking the log after a
+service restart.
+
+## Upgrade
+
+```bash
+cd ~/mlb-led-scoreboard
+sudo ./venv/bin/pip uninstall -y mlb-led-scoreboard-green-monster
+sudo ./venv/bin/pip install /path/to/green-monster-scoreboard-v1.0.2
+sudo systemctl restart mlb-led-scoreboard.service
+```
+
+Then check:
+
+```bash
+sudo journalctl -u mlb-led-scoreboard.service -n 100 --no-pager | grep -i "Green Monster"
+```

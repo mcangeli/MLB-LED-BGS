@@ -43,8 +43,13 @@ class Renderer(api.PluginRenderer):
         self._text(graphics, canvas, 1, 9, fg, "GREEN")
         self._text(graphics, canvas, 1, 18, fg, "MONSTER")
         self._text(graphics, canvas, 1, 28, fg, status[:12])
-        if canvas.height > 32 and error:
-            self._text(graphics, canvas, 1, 40, fg, error[:16])
+        if error:
+            if canvas.height > 32:
+                self._text(graphics, canvas, 1, 40, fg, error[:16])
+            elif status == "CONFIG ERR":
+                # On 32px boards make the missing-team diagnosis explicit
+                # instead of showing an arbitrary/default club.
+                self._text(graphics, canvas, 35, 28, fg, "TEAM?")
 
     def _compact(self, canvas, graphics, fg, dim, g):
         self._text(graphics, canvas, 1, 7, fg, g.status[:7])

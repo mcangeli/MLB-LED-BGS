@@ -61,6 +61,8 @@ class Data(PluginData):
         self.update(True)
 
     def _team_id(self, value):
+        if value is None or not str(value).strip():
+            return None
         if isinstance(value, int) or str(value).isdigit():
             return int(value)
         key = str(value).strip()
@@ -90,8 +92,11 @@ class Data(PluginData):
         return UpdateStatus.SUCCESS
 
     def _refresh(self):
+        if not self.config.team:
+            self.game = Game(error="TEAM MISSING", status="CONFIG ERR")
+            return
         if self.team_id is None:
-            self.game = Game(error="BAD TEAM", status="BAD TEAM")
+            self.game = Game(error=self.config.team[:16], status="BAD TEAM")
             return
 
         date = self.config.parse_today()
