@@ -1,77 +1,7 @@
-import json
-import sys
-from pathlib import Path
-
 from bullpen import api
 from bullpen.logging import LOGGER
 
-PLUGIN_CONFIG_KEYS = (
-    "green_monster",
-    "green-monster",
-    "green_monster_scoreboard",
-    "green-monster-scoreboard",
-)
-
-VALID_STATUSES = {"live", "pregame", "final"}
-
-
-def _active_config_path() -> Path | None:
-    config_arg = None
-    for index, arg in enumerate(sys.argv):
-        if arg.startswith("--config="):
-            config_arg = arg.split("=", 1)[1]
-            break
-        if arg == "--config" and index + 1 < len(sys.argv):
-            config_arg = sys.argv[index + 1]
-            break
-
-    try:
-        from data.paths import CURRENT_DIRECTORY, ROOT_DIRECTORY
-    except Exception:
-        CURRENT_DIRECTORY = Path.cwd()
-        ROOT_DIRECTORY = Path.cwd()
-
-    if config_arg:
-        return (Path(CURRENT_DIRECTORY) / config_arg).with_suffix(".json")
-    return Path(ROOT_DIRECTORY) / "config.json"
-
-
-def _read_active_config() -> dict:
-    path = _active_config_path()
-    if path is None or not path.is_file():
-        return {}
-    try:
-        with path.open("r", encoding="utf-8") as handle:
-            return json.load(handle)
-    except Exception:
-        LOGGER.exception("Green Monster could not read active config from %s", path)
-        return {}
-
-
-def _plugin_fallback(root: dict) -> tuple[dict, str | None]:
-    plugins = root.get("plugins", {})
-    if not isinstance(plugins, dict):
-        return {}, None
-    for key in PLUGIN_CONFIG_KEYS:
-        section = plugins.get(key)
-        if isinstance(section, dict):
-            return section, key
-    return {}, None
-
-
-def _green_monster_screen(root: dict) -> dict:
-    """Return the first Green Monster rotation screen.
-
-    Bullpen does not pass individual screen entries into PluginConfig, so this
-    plugin reads its own screen declaration to support game-like filters.
-    """
-    screens = root.get("rotation", {}).get("screens", [])
-    if not isinstance(screens, list):
-        return {}
-    for screen in screens:
-        if isinstance(screen, dict) and screen.get("kind") == "green_monster":
-            return screen
-    return {}
+VALID_STATUSES = {"live", "live_in_inning", "pregame", "game_over"}
 
 
 def _as_list(value):
@@ -79,54 +9,30 @@ def _as_list(value):
         return []
     if isinstance(value, list):
         return [str(v).strip() for v in value if str(v).strip()]
-    if str(value).strip():
-        return [str(value).strip()]
-    return []
+    value = str(value).strip()
+    return [value] if value else []
 
 
 class Config(api.PluginConfig):
     def __init__(self, base: api.MLBConfig) -> None:
-        root = _read_active_config()
-
+        # Bullpen passes config.json -> plugins -> green_monster here.
         cfg = dict(base.plugin_config or {})
-        source = "Bullpen plugins.green_monster"
-        if not cfg:
-            fallback, key = _plugin_fallback(root)
-            if fallback:
-                cfg = fallback
-                source = f"config.json plugins.{key}"
 
-        screen = _green_monster_screen(root)
-
-        # Selection may be configured either in plugins.green_monster or directly
-        # on the rotation screen. Screen values win because that mirrors the
-        # built-in game-screen style.
-        teams = _as_list(screen.get("teams"))
-        if not teams:
-            teams = _as_list(cfg.get("teams"))
+        teams = _as_list(cfg.get("teams"))
         if not teams and cfg.get("team"):
             teams = _as_list(cfg.get("team"))
 
-        divisions = _as_list(screen.get("divisions"))
-        if not divisions:
-            divisions = _as_list(cfg.get("divisions"))
-
-        leagues = _as_list(screen.get("leagues"))
-        if not leagues:
-            leagues = _as_list(cfg.get("leagues"))
-
-        # Backward compatibility.
         self.team = teams[0] if teams else ""
         self.teams = teams
-        self.divisions = divisions
-        self.leagues = leagues
+        self.divisions = _as_list(cfg.get("divisions"))
+        self.leagues = _as_list(cfg.get("leagues"))
 
-        required_status = screen.get("required_status", cfg.get("required_status"))
+        required_status = cfg.get("required_status")
         if required_status is not None:
             required_status = str(required_status).strip().lower()
             if required_status not in VALID_STATUSES:
                 LOGGER.warning(
-                    "Green Monster required_status %r is not one of %s; ignoring it",
+                    "Green Monster required_status %r is invalid; expected one of %s",
                     required_status,
                     sorted(VALID_STATUSES),
                 )
@@ -142,11 +48,9 @@ class Config(api.PluginConfig):
         self.parse_today = base.parse_today
 
         LOGGER.info(
-            "Green Monster v1.5.0 selection teams=%s divisions=%s leagues=%s "
-            "required_status=%s (plugin config source: %s)",
+            "Green Monster v1.5.1 selection teams=%s divisions=%s leagues=%s required_status=%s",
             self.teams or "*",
             self.divisions or "*",
             self.leagues or "*",
             self.required_status or "any",
-            source,
         )

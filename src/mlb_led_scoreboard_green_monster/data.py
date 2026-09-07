@@ -196,7 +196,7 @@ class Data(PluginData):
         req = self.config.required_status
         if req and game.status_class == req:
             return (0, game.game_pk or 0)
-        order = {"live": 1, "pregame": 2, "final": 3}
+        order = {"live": 1, "pregame": 2, "game_over": 3}
         return (order.get(game.status_class, 4), game.game_pk or 0)
 
     def _parse_game(self, summary):
@@ -217,12 +217,12 @@ class Data(PluginData):
         state = str(ls.get("inningState", ""))
 
         if "final" in low or "game over" in low:
-            short, status_class = "FINAL", "final"
+            short, status_class = "FINAL", "game_over"
         elif any(x in low for x in ("progress", "live", "manager challenge")):
             short = ("T" if state.lower().startswith("top") else "B") + str(inning)
             status_class = "live"
         elif "postpon" in low:
-            short, status_class = "PPD", "final"
+            short, status_class = "PPD", "game_over"
         elif "delay" in low:
             short, status_class = "DELAY", "live"
         else:
@@ -266,6 +266,19 @@ class Data(PluginData):
         req = self.config.required_status
         if not req:
             return list(self.games)
+
+        if req == "live_in_inning":
+            results = []
+            for g in self.games:
+                if g.status_class != "live":
+                    continue
+                state = (g.inning_state or "").strip().lower()
+                # MLB commonly reports "Middle" / "End" between innings.
+                if state.startswith("middle") or state.startswith("end"):
+                    continue
+                results.append(g)
+            return results
+
         return [g for g in self.games if g.status_class == req]
 
     def populated(self):

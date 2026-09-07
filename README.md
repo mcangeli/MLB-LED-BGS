@@ -1,38 +1,60 @@
 # Green Monster Scoreboard
 
-**Version 1.5.0**
+**Version 1.5.1**
 
 Green Monster Scoreboard is a Bullpen plugin for
 [MLB-LED-Scoreboard](https://github.com/MLB-LED-Scoreboard/mlb-led-scoreboard).
-It replaces or supplements the standard game display with a compact line-score
-layout inspired by Fenway Park's hand-operated Green Monster scoreboard.
+It displays MLB game information in a compact line-score presentation inspired
+by Fenway Park's hand-operated Green Monster scoreboard.
 
-It is designed primarily for a **64x32 LED matrix** and uses MLB-StatsAPI for
-live MLB game information.
+The primary target is a **64x32 LED matrix**.
 
 ## Features
 
-- Fenway-style dark green manual scoreboard presentation.
-- Away/home team abbreviations.
-- Inning-by-inning line score.
-- R / H / E totals.
-- Live inning indicator.
-- **Eight innings per page on 64x32 displays.**
-- Automatic page switching for extra innings:
-  - page 1: innings 1-8
-  - page 2: innings 9-16
-  - page 3: innings 17-24, if ever needed
-- Team, division, and league game targeting.
-- `required_status` support for `live`, `pregame`, and `final`.
-- Multiple matching games cycle automatically.
-- Uses the scoreboard's effective date, including `demo_date`.
+- Dark green manual-scoreboard presentation.
+- Away and home team abbreviations.
+- Runs / Hits / Errors.
+- Eight innings per page on 64x32.
+- Automatic paging for innings 9+.
+- Team targeting.
+- Division targeting.
+- League targeting.
+- Live / live-in-inning / pregame / game-over filtering.
+- Multiple matching games can cycle automatically.
+- MLB-StatsAPI game data.
 
-## Requirements
+## Important MLB-LED-Scoreboard rotation rule
 
-- MLB-LED-Scoreboard 9.x.
-- Bullpen plugin support.
-- MLB-StatsAPI.
-- A supported RGB matrix; 64x32 is the primary layout.
+MLB-LED-Scoreboard v9's schema treats plugin screens differently from game
+rules.
+
+A Bullpen plugin screen may contain only:
+
+```json
+{
+  "kind": "green_monster",
+  "with_priority": 2,
+  "seconds": 20
+}
+```
+
+Do **not** put these fields directly on a `green_monster` screen:
+
+```text
+priority
+required_status
+teams
+divisions
+leagues
+```
+
+The core schema rejects them before the plugin loads.
+
+The official schema allows `priority`, `required_status`, and `teams` on
+`kind: "game"` rules. Those game rules are what activate a priority.
+
+Green Monster's own team/division/league/status filtering therefore belongs
+under `plugins.green_monster`.
 
 ## Installation
 
@@ -44,7 +66,7 @@ sudo ./venv/bin/pip install git+https://github.com/YOUR-USER/YOUR-REPOSITORY.git
 sudo systemctl restart mlb-led-scoreboard.service
 ```
 
-### Local copy
+### Local directory
 
 ```bash
 cd ~/mlb-led-scoreboard
@@ -56,263 +78,76 @@ sudo systemctl restart mlb-led-scoreboard.service
 
 ```bash
 cd ~/mlb-led-scoreboard
-sudo ./venv/bin/pip install --upgrade --force-reinstall git+https://github.com/YOUR-USER/YOUR-REPOSITORY.git
+sudo ./venv/bin/pip install --upgrade --force-reinstall /path/to/green-monster-scoreboard
 sudo systemctl restart mlb-led-scoreboard.service
 ```
 
-## Basic plugin configuration
+## Replace the default live display for one team
 
-The visual/data refresh settings live under `plugins.green_monster`:
-
-```json
-"plugins": {
-  "green_monster": {
-    "refresh_rate": 10,
-    "inning_page_seconds": 5,
-    "game_cycle_seconds": 15,
-    "background": [18, 83, 55],
-    "text": [238, 231, 198],
-    "dim_text": [105, 117, 91]
-  }
-}
-```
-
-## Game selection
-
-Version 1.5.0 supports game-style selection directly on the
-`rotation.screens` Green Monster entry.
-
-### One team
+For a Braves live-game priority, use a normal MLB-LED-Scoreboard game rule:
 
 ```json
 {
-  "kind": "green_monster",
-  "teams": ["Braves"],
-  "seconds": 20
-}
-```
-
-You can also use abbreviations:
-
-```json
-{
-  "kind": "green_monster",
-  "teams": ["ATL"],
-  "seconds": 20
-}
-```
-
-### Multiple teams
-
-```json
-{
-  "kind": "green_monster",
-  "teams": ["Braves", "Phillies", "Mets"],
-  "seconds": 20
-}
-```
-
-If more than one selected team has a matching game, the plugin cycles between
-the matching games using `game_cycle_seconds`.
-
-### Division
-
-```json
-{
-  "kind": "green_monster",
-  "divisions": ["NL East"],
-  "seconds": 20
-}
-```
-
-Supported MLB division names are:
-
-- AL East
-- AL Central
-- AL West
-- NL East
-- NL Central
-- NL West
-
-### League
-
-```json
-{
-  "kind": "green_monster",
-  "leagues": ["NL"],
-  "seconds": 20
-}
-```
-
-Supported league selectors are `AL`, `NL`, and `MLB`.
-
-Selectors are additive. For example:
-
-```json
-{
-  "kind": "green_monster",
-  "teams": ["Braves"],
-  "divisions": ["AL East"],
-  "seconds": 20
-}
-```
-
-will include the Braves plus games involving AL East clubs.
-
-For backward compatibility, `team`, `teams`, `divisions`, and `leagues` may
-also be supplied under `plugins.green_monster`, but v1.5.0 recommends putting
-game-selection options on the screen entry.
-
-## required_status
-
-The Green Monster plugin now reads `required_status` from its screen entry.
-
-Valid values are:
-
-```text
-live
-pregame
-final
-```
-
-For example, to make this screen eligible only for live games:
-
-```json
-{
-  "kind": "green_monster",
-  "teams": ["Braves"],
-  "required_status": "live",
-  "seconds": 20
-}
-```
-
-When `required_status` is `live`, the plugin's `can_render()` returns false
-unless at least one selected game is currently live. Pregame and final games
-are therefore skipped.
-
-### Replacing the normal live game display
-
-The upstream rotation system treats `kind: "game"` specially: game entries can
-create priority rules. Bullpen plugins are ordinary plugin screens, so
-`required_status` inside `green_monster` controls whether this plugin can render
-but does not itself create a new core priority rule.
-
-If your rotation already has a live-game priority, place Green Monster at that
-priority with `with_priority`.
-
-Example:
-
-```json
-"rotation": {
-  "screens": [
-    {
-      "kind": "game",
-      "priority": 2,
-      "required_status": "live",
-      "teams": ["Braves"]
-    },
-    {
-      "kind": "green_monster",
-      "with_priority": 2,
-      "teams": ["Braves"],
-      "required_status": "live",
-      "seconds": 20
-    },
-    {
-      "kind": "standings",
-      "with_priority": 0,
-      "seconds": 30
-    }
-  ]
-}
-```
-
-Important: the first `kind: "game"` entry is the upstream priority trigger. If
-your MLB-LED-Scoreboard version also renders that trigger as a normal game
-screen, it may still alternate with Green Monster. Fully replacing the built-in
-live game renderer at the same priority can require a small upstream rotation
-configuration/core change because Bullpen plugins cannot register themselves as
-`kind: "game"` rules.
-
-If your installation accepts `priority` and `required_status` on plugin kinds,
-you may instead use:
-
-```json
-{
-  "kind": "green_monster",
+  "kind": "game",
   "priority": 2,
   "required_status": "live",
   "teams": ["Braves"]
 }
 ```
 
-but the portable v9.x behavior is the `with_priority` form described above.
-
-## Eight-inning paging
-
-v1.5.0 changes the 64x32 layout from nine inning columns to eight.
-
-During innings 1-8:
-
-```text
-       1 2 3 4 5 6 7 8   R H E
-ATL    0 1 0 0 2 0 0 1   4 8 0
-PHI    0 0 0 1 0 0 0 0   1 5 1
-```
-
-Once inning 9 is reached, the display automatically alternates between:
-
-```text
-innings 1-8
-```
-
-and:
-
-```text
-innings 9-16
-```
-
-The switching interval is controlled by:
-
-```json
-"inning_page_seconds": 5
-```
-
-This gives the inning columns more room on a 64-pixel-wide display and keeps
-the R/H/E totals readable.
-
-## Complete Braves live-game example
+Then attach Green Monster to priority 2:
 
 ```json
 {
-  "$schema": "./schemas/config.schema.json",
-  "format": 9.0,
+  "kind": "green_monster",
+  "with_priority": 2,
+  "seconds": 20
+}
+```
 
+Configure which game Green Monster itself should display under `plugins`:
+
+```json
+"plugins": {
+  "green_monster": {
+    "teams": ["Braves"],
+    "required_status": "live",
+    "refresh_rate": 10,
+    "inning_page_seconds": 5,
+    "game_cycle_seconds": 15
+  }
+}
+```
+
+A complete relevant configuration is therefore:
+
+```json
+{
   "rotation": {
-    "scroll_until_finished": true,
-    "rates": {
-      "live": 15.0,
-      "final": 15.0,
-      "pregame": 15.0
-    },
     "screens": [
       {
-        "kind": "green_monster",
-        "teams": ["Braves"],
+        "kind": "game",
+        "priority": 2,
         "required_status": "live",
-        "seconds": 20,
-        "with_priority": 1
+        "teams": ["Braves"]
+      },
+      {
+        "kind": "green_monster",
+        "with_priority": 2,
+        "seconds": 20
       },
       {
         "kind": "standings",
-        "seconds": 30,
-        "with_priority": 0
+        "with_priority": 0,
+        "seconds": 30
       }
     ]
   },
 
   "plugins": {
     "green_monster": {
+      "teams": ["Braves"],
+      "required_status": "live",
       "refresh_rate": 10,
       "inning_page_seconds": 5,
       "game_cycle_seconds": 15,
@@ -324,9 +159,185 @@ the R/H/E totals readable.
 }
 ```
 
-Keep the other settings from your existing MLB-LED-Scoreboard configuration.
+## required_status values
 
-## Diagnostics
+Green Monster v1.5.1 uses the same status names as the upstream v9 schema:
+
+```text
+live
+live_in_inning
+pregame
+game_over
+```
+
+Example:
+
+```json
+"plugins": {
+  "green_monster": {
+    "teams": ["Braves"],
+    "required_status": "live"
+  }
+}
+```
+
+`live_in_inning` excludes middle/end-of-inning breaks.
+
+## Team configuration
+
+One team:
+
+```json
+"plugins": {
+  "green_monster": {
+    "teams": ["Braves"]
+  }
+}
+```
+
+The legacy singular form is also accepted:
+
+```json
+"team": "Braves"
+```
+
+Multiple teams:
+
+```json
+"teams": ["Braves", "Phillies", "Mets"]
+```
+
+## Division configuration
+
+```json
+"plugins": {
+  "green_monster": {
+    "divisions": ["NL East"],
+    "required_status": "live"
+  }
+}
+```
+
+Supported divisions:
+
+- AL East
+- AL Central
+- AL West
+- NL East
+- NL Central
+- NL West
+
+The plugin will consider games involving any club in the selected division.
+
+### Priority limitation for divisions
+
+The upstream `kind: "game"` priority rule accepts `teams`, but not
+`divisions`. If you want a priority activated by an entire division, list the
+teams from that division in the core game rule and use `divisions` in the
+plugin config.
+
+For example, an NL East live priority can be represented as:
+
+```json
+{
+  "kind": "game",
+  "priority": 2,
+  "required_status": "live",
+  "teams": ["Braves", "Mets", "Phillies", "Marlins", "Nationals"]
+}
+```
+
+and:
+
+```json
+"plugins": {
+  "green_monster": {
+    "divisions": ["NL East"],
+    "required_status": "live"
+  }
+}
+```
+
+## League configuration
+
+```json
+"plugins": {
+  "green_monster": {
+    "leagues": ["NL"],
+    "required_status": "live"
+  }
+}
+```
+
+Green Monster supports `AL`, `NL`, and `MLB`.
+
+The same upstream priority limitation applies: core `kind: "game"` rules do
+not accept a league selector. To create a league-wide live priority, the core
+game rule must list the teams explicitly.
+
+## Eight-inning layout
+
+The 64x32 renderer displays exactly eight inning columns per page.
+
+Page 1:
+
+```text
+       1 2 3 4 5 6 7 8   R H E
+ATL    0 1 0 0 2 0 0 1   4 8 0
+PHI    0 0 0 1 0 0 0 0   1 5 1
+```
+
+Once inning 9 is reached, the renderer alternates between page 1 and page 2.
+Page 2 contains innings 9-16.
+
+Configure the paging interval with:
+
+```json
+"inning_page_seconds": 5
+```
+
+## Why priority and required_status are split
+
+The MLB-LED-Scoreboard core owns screen rotation and validates `config.json`
+before Bullpen plugins are loaded.
+
+The core schema allows a plugin screen to specify:
+
+```text
+kind
+with_priority
+seconds
+```
+
+A `kind: "game"` rule can additionally specify:
+
+```text
+priority
+required_status
+teams
+```
+
+So the recommended design is:
+
+1. Core game rule decides **when priority 2 is active**.
+2. Green Monster's `with_priority: 2` decides **when the plugin joins that
+   rotation**.
+3. `plugins.green_monster` decides **which game the plugin itself renders**.
+
+## Note about fully replacing the built-in game screen
+
+A `kind: "game"` rule is part of the core game's rotation machinery. Depending
+on the upstream rotation implementation/version, the standard game renderer may
+still participate at that priority.
+
+A Bullpen plugin cannot add new fields to the core config schema or turn itself
+into a `kind: "game"` rule. A true one-for-one replacement of the built-in game
+renderer at the core level would require a small MLB-LED-Scoreboard core/schema
+change.
+
+v1.5.1 stays compatible with the unmodified v9 schema.
+
+## Troubleshooting
 
 Enable:
 
@@ -334,54 +345,39 @@ Enable:
 "debug": true
 ```
 
-then restart and inspect:
+Then:
 
 ```bash
+sudo systemctl restart mlb-led-scoreboard.service
 sudo journalctl -u mlb-led-scoreboard.service -n 100 --no-pager | grep -i "Green Monster"
 ```
 
-v1.5.0 logs the active selectors and required status, for example:
+You should see a line similar to:
 
 ```text
-Green Monster v1.5.0 selection teams=['Braves'] divisions=* leagues=* required_status=live
+Green Monster v1.5.1 selection teams=['Braves'] divisions=* leagues=* required_status=live
 ```
-
-## Uninstall
-
-```bash
-cd ~/mlb-led-scoreboard
-sudo ./venv/bin/pip uninstall mlb-led-scoreboard-green-monster
-```
-
-Then remove the Green Monster entries from `rotation.screens` and
-`plugins.green_monster`, and restart the scoreboard.
 
 ## Version history
 
+### 1.5.1
+
+- Fixed invalid v1.5.0 rotation examples.
+- Plugin screen now uses only schema-valid `kind`, `with_priority`, and
+  `seconds` fields.
+- Moved Green Monster team/division/league/status selectors to
+  `plugins.green_monster`.
+- Aligned status names with upstream v9:
+  `live`, `live_in_inning`, `pregame`, `game_over`.
+- Added explicit documentation for the upstream plugin-screen schema
+  limitation.
+
 ### 1.5.0
 
-- Changed the 64x32 layout to eight inning columns per page.
-- Added automatic extra-inning page switching.
-- Added `required_status` handling inside the plugin.
-- Added screen-level `teams` selection.
-- Added screen-level `divisions` selection.
-- Added screen-level `leagues` selection.
-- Added cycling between multiple matching games.
-- Updated README with live-game replacement guidance.
+- Added eight-inning paging.
+- Added game targeting and required-status filtering.
+- Added multiple-game cycling.
 
-### 1.0.3
+### 1.0.x
 
-- Improved plugin configuration discovery.
-- Added complete installation and troubleshooting documentation.
-
-### 1.0.2
-
-- Removed silent Boston fallback.
-
-### 1.0.1
-
-- Added visible diagnostic states.
-
-### 1.0.0
-
-- Initial release.
+- Initial plugin releases and configuration fixes.
