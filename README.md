@@ -1,41 +1,56 @@
-# Green Monster Scoreboard
+# Green Monster Scoreboard v1.0.1
 
-A Bullpen plugin for [MLB-LED-Scoreboard](https://github.com/MLB-LED-Scoreboard/mlb-led-scoreboard) that renders a team game in the visual spirit of Fenway Park's manual Green Monster scoreboard.
+This is a troubleshooting-focused rebuild of the Bullpen plugin.
 
-The display uses a dark green background, cream lettering, inning-by-inning scoring, and an R/H/E block. It supports pregame, live, final, delayed/postponed, and no-game states.
+## What changed from 1.0.0
 
-## Requirements
+- `can_render()` now always returns `True`.
+- No-game, invalid-team, and API-error states render visibly on the panel instead of allowing the screen to disappear from rotation.
+- Team IDs/abbreviations are resolved locally first, reducing initialization failure risk.
+- Renderer geometry is fixed for the most common 64x32 board instead of deriving spacing from font metadata.
+- The entry point and class structure mirror the official Bullpen example plugin.
+- Added simple commands below to verify that Bullpen sees the installed entry point.
 
-- MLB-LED-Scoreboard v9.x with Bullpen plugin support
-- MLB-StatsAPI (installed automatically as a package dependency)
+## Install / upgrade
 
-## Install
-
-From a local clone of this plugin:
-
-```bash
-cd /home/pi/mlb-led-scoreboard
-sudo ./venv/bin/pip install /path/to/green-monster-scoreboard
-```
-
-Or, after publishing this directory to GitHub:
+From the scoreboard directory:
 
 ```bash
-cd /home/pi/mlb-led-scoreboard
-sudo ./venv/bin/pip install git+https://github.com/YOUR-USER/green-monster-scoreboard.git
+sudo ./venv/bin/pip uninstall -y mlb-led-scoreboard-green-monster
+sudo ./venv/bin/pip install /path/to/green-monster-scoreboard-v1.0.1
 ```
 
-## Configure
+If installing from GitHub, update your repo and use:
 
-Add the plugin settings beneath the top-level `plugins` object in `config.json`:
+```bash
+sudo ./venv/bin/pip install --upgrade --force-reinstall git+https://github.com/YOUR-USER/YOUR-REPO.git
+```
+
+## Verify registration
+
+```bash
+./venv/bin/python -c "from importlib.metadata import entry_points; print([(e.name,e.value) for e in entry_points(group='bullpen.mlbled.plugin') if 'green' in e.name])"
+```
+
+Expected output contains:
+
+```text
+('green_monster', 'mlb_led_scoreboard_green_monster:load')
+```
+
+Then verify imports:
+
+```bash
+./venv/bin/python -c "import mlb_led_scoreboard_green_monster as p; print(p.load())"
+```
+
+## config.json
 
 ```json
 "plugins": {
   "green_monster": {
-    "team": "Red Sox",
-    "refresh_rate": 5,
-    "show_no_game": true,
-    "show_probable_pitchers": true,
+    "team": "BOS",
+    "refresh_rate": 10,
     "background": [18, 83, 55],
     "text": [238, 231, 198],
     "dim_text": [105, 117, 91]
@@ -43,80 +58,20 @@ Add the plugin settings beneath the top-level `plugins` object in `config.json`:
 }
 ```
 
-`team` accepts a team name, common team abbreviation, or numeric MLB team ID. Examples:
-
-```json
-"team": "Red Sox"
-"team": "BOS"
-"team": 111
-```
-
-Then add the screen to `rotation.screens`:
+For initial troubleshooting, make the screen unconditional:
 
 ```json
 {
   "kind": "green_monster",
-  "priority": 2
+  "seconds": 20
 }
 ```
 
-Example:
+Put it near the beginning of `rotation.screens`. Do NOT give it a `required_status`,
+`teams`, `priority`, or `with_priority` until you have confirmed it appears.
 
-```json
-"rotation": {
-  "scroll_until_finished": true,
-  "rates": {
-    "live": 15.0,
-    "final": 15.0,
-    "pregame": 15.0
-  },
-  "screens": [
-    {
-      "kind": "green_monster",
-      "priority": 2
-    },
-    {
-      "kind": "game",
-      "priority": 1
-    }
-  ]
-}
-```
+Restart the scoreboard service afterward.
 
-Restart the scoreboard after installing and changing configuration.
-
-## Display behavior
-
-### 64x32
-Shows:
-
-- configured team's game
-- away and home 3-letter abbreviations
-- innings 1–9
-- R / H / E
-- compact status (`T5`, `B7`, `FINAL`, game time, etc.)
-
-### 128-pixel-wide boards
-Uses the additional width for extra innings when available.
-
-### 64-pixel-tall boards
-Uses the additional height for live inning/outs, final venue information, or probable pitchers.
-
-### 32x32
-Uses a compact fallback with team abbreviations, runs, hits, errors, and game status.
-
-## Notes
-
-The plugin deliberately uses an existing scoreboard layout font (`standings`, with fallbacks) so it does not require custom coordinate or color JSON entries.
-
-The effective date comes from MLB-LED-Scoreboard's own `parse_today()` function, which helps it behave correctly with the project's demo-date and end-of-day logic.
-
-For doubleheaders, the plugin prefers a live game, then an upcoming scheduled game, then a completed game.
-
-## Development / emulator
-
-Install the parent scoreboard in emulator mode, install this package into its virtualenv, add the config above, then launch MLB-LED-Scoreboard with `--emulated`.
-
-## Version
-
-1.0.0
+If the API/team lookup fails, v1.0.1 should still display a green screen saying
+`GREEN MONSTER` followed by `API ERR`, `BAD TEAM`, or `NO GAME`. If you see that,
+registration and rendering are working and the remaining issue is data/configuration.
