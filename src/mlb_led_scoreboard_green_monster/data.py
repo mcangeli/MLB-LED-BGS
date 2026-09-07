@@ -32,8 +32,17 @@ ALIASES = {
     "rockies":"COL","colorado rockies":"COL","diamondbacks":"AZ","arizona diamondbacks":"AZ",
 }
 
+# MLB division IDs.
+DIVISION_IDS = {
+    "AL EAST": 201, "AL CENTRAL": 202, "AL WEST": 200,
+    "NL EAST": 204, "NL CENTRAL": 205, "NL WEST": 203,
+}
+LEAGUE_IDS = {"AL": 103, "AMERICAN": 103, "AMERICAN LEAGUE": 103,
+              "NL": 104, "NATIONAL": 104, "NATIONAL LEAGUE": 104}
+
 @dataclass
 class TeamLine:
+    team_id: int | None = None
     abbr: str = "---"
     runs: int = 0
     hits: int = 0
@@ -43,8 +52,10 @@ class TeamLine:
 @dataclass
 class Game:
     found: bool = False
+    game_pk: int | None = None
     error: str = ""
     status: str = "NO GAME"
+    status_class: str = "pregame"
     detailed_status: str = ""
     inning_state: str = ""
     inning: int = 0
@@ -56,8 +67,11 @@ class Data(PluginData):
     def __init__(self, config: Config) -> None:
         self.config = config
         self.last_update = 0.0
-        self.team_id = self._team_id(config.team)
+        self.games: list[Game] = []
         self.game = Game()
+        self._team_ids = self._resolve_team_filters()
+        self._division_team_ids = self._resolve_division_filters()
+        self._league_team_ids = self._resolve_league_filters()
         self.update(True)
 
     def _team_id(self, value):
@@ -77,6 +91,65 @@ class Data(PluginData):
             LOGGER.exception("Green Monster team lookup failed for %r", value)
         return None
 
+    def _resolve_team_filters(self):
+        result = set()
+        for team in self.config.teams:
+            tid = self._team_id(team)
+            if tid:
+                result.add(tid)
+            else:
+                LOGGER.warning("Green Monster could not resolve team filter %r", team)
+        return result
+
+    def _teams_for_division(self, division_id):
+        try:
+            result = statsapi.get("teams", {"sportId": 1})
+            teams = result.get("teams", [])
+            return {
+                int(t["id"]) for t in teams
+                if int(t.get("division", {}).get("id", 0) or 0) == division_id
+            }
+        except Exception:
+            LOGGER.exception("Green Monster failed resolving division id %s", division_id)
+            return set()
+
+    def _resolve_division_filters(self):
+        result = set()
+        for div in self.config.divisions:
+            did = DIVISION_IDS.get(str(div).strip().upper())
+            if did:
+                result |= self._teams_for_division(did)
+            else:
+                LOGGER.warning("Green Monster unknown division filter %r", div)
+        return result
+
+    def _resolve_league_filters(self):
+        # MLB means all MLB clubs. AL/NL narrow to a league.
+        requested = [str(x).strip().upper() for x in self.config.leagues]
+        if not requested:
+            return set()
+        if any(x in ("MLB", "MAJOR LEAGUE BASEBALL") for x in requested):
+            return set(TEAM_IDS.values())
+
+        try:
+            result = statsapi.get("teams", {"sportId": 1})
+            teams = result.get("teams", [])
+        except Exception:
+            LOGGER.exception("Green Monster failed resolving league filters")
+            return set()
+
+        ids = set()
+        wanted = {LEAGUE_IDS[x] for x in requested if x in LEAGUE_IDS}
+        for t in teams:
+            lid = int(t.get("league", {}).get("id", 0) or 0)
+            if lid in wanted:
+                ids.add(int(t["id"]))
+        return ids
+
+    def _allowed_team_ids(self):
+        # Multiple selectors are additive, like a set of game targets.
+        return self._team_ids | self._division_team_ids | self._league_team_ids
+
     def update(self, force=False) -> UpdateStatus:
         now = time.time()
         if not force and now - self.last_update < self.config.refresh_rate:
@@ -86,43 +159,49 @@ class Data(PluginData):
             self._refresh()
         except Exception as exc:
             LOGGER.exception("Green Monster refresh failed")
-            # IMPORTANT: Keep the plugin renderable so API/config problems are visible.
+            self.games = []
             self.game = Game(error=type(exc).__name__, status="API ERR")
             return UpdateStatus.FAIL
         return UpdateStatus.SUCCESS
 
     def _refresh(self):
-        if not self.config.team:
-            self.game = Game(error="TEAM MISSING", status="CONFIG ERR")
-            return
-        if self.team_id is None:
-            self.game = Game(error=self.config.team[:16], status="BAD TEAM")
-            return
-
         date = self.config.parse_today()
         date_text = date.strftime("%m/%d/%Y")
-        games = statsapi.schedule(
-            start_date=date_text,
-            end_date=date_text,
-            team=self.team_id,
-        )
 
-        if not games:
+        # Fetch the day's MLB schedule once and filter locally. This supports
+        # team, division, and league targets without multiple schedule calls.
+        schedule = statsapi.schedule(start_date=date_text, end_date=date_text, sportId=1)
+        allowed = self._allowed_team_ids()
+
+        summaries = []
+        for summary in schedule:
+            away_id = int(summary.get("away_id", 0) or 0)
+            home_id = int(summary.get("home_id", 0) or 0)
+            if allowed and away_id not in allowed and home_id not in allowed:
+                continue
+            summaries.append(summary)
+
+        if not summaries:
+            self.games = []
             self.game = Game(status="NO GAME")
             return
 
-        def rank(g):
-            s = str(g.get("status", "")).lower()
-            if "progress" in s or "live" in s:
-                return 0
-            if any(x in s for x in ("scheduled", "pre-game", "warmup")):
-                return 1
-            return 2
+        parsed = [self._parse_game(s) for s in summaries]
+        parsed.sort(key=self._rank)
+        self.games = parsed
+        self.game = parsed[0]
 
-        summary = sorted(games, key=rank)[0]
+    def _rank(self, game):
+        # Required status first, then live, pregame, final.
+        req = self.config.required_status
+        if req and game.status_class == req:
+            return (0, game.game_pk or 0)
+        order = {"live": 1, "pregame": 2, "final": 3}
+        return (order.get(game.status_class, 4), game.game_pk or 0)
+
+    def _parse_game(self, summary):
         game_pk = int(summary["game_id"])
         ls = statsapi.get("game_linescore", {"gamePk": game_pk})
-
         away_innings, home_innings = [], []
         for inn in ls.get("innings", []):
             ar = inn.get("away", {}).get("runs")
@@ -137,49 +216,62 @@ class Data(PluginData):
         inning = int(ls.get("currentInning", 0) or 0)
         state = str(ls.get("inningState", ""))
 
-        if "final" in low:
-            short = "FINAL"
-        elif "progress" in low or "live" in low:
+        if "final" in low or "game over" in low:
+            short, status_class = "FINAL", "final"
+        elif any(x in low for x in ("progress", "live", "manager challenge")):
             short = ("T" if state.lower().startswith("top") else "B") + str(inning)
+            status_class = "live"
         elif "postpon" in low:
-            short = "PPD"
+            short, status_class = "PPD", "final"
         elif "delay" in low:
-            short = "DELAY"
+            short, status_class = "DELAY", "live"
         else:
-            short = "PREGAME"
+            short, status_class = "PREGAME", "pregame"
 
-        self.game = Game(
-            found=True,
-            status=short,
-            detailed_status=status,
-            inning_state=state,
-            inning=inning,
+        away_id = int(summary.get("away_id", 0) or 0)
+        home_id = int(summary.get("home_id", 0) or 0)
+        return Game(
+            found=True, game_pk=game_pk, status=short, status_class=status_class,
+            detailed_status=status, inning_state=state, inning=inning,
             outs=int(ls.get("outs", 0) or 0),
             away=TeamLine(
-                abbr=self._abbr(summary.get("away_id"), summary.get("away_name")),
+                team_id=away_id, abbr=self._abbr(away_id, summary.get("away_name")),
                 runs=int(at.get("runs", summary.get("away_score", 0)) or 0),
                 hits=int(at.get("hits", 0) or 0),
-                errors=int(at.get("errors", 0) or 0),
-                innings=away_innings,
+                errors=int(at.get("errors", 0) or 0), innings=away_innings,
             ),
             home=TeamLine(
-                abbr=self._abbr(summary.get("home_id"), summary.get("home_name")),
+                team_id=home_id, abbr=self._abbr(home_id, summary.get("home_name")),
                 runs=int(ht.get("runs", summary.get("home_score", 0)) or 0),
                 hits=int(ht.get("hits", 0) or 0),
-                errors=int(ht.get("errors", 0) or 0),
-                innings=home_innings,
+                errors=int(ht.get("errors", 0) or 0), innings=home_innings,
             ),
         )
 
     @staticmethod
     def _abbr(team_id, name):
-        for abbr, tid in TEAM_IDS.items():
-            if tid == team_id and len(abbr) <= 3:
-                return abbr
+        preferred = {
+            108:"LAA",109:"ARI",110:"BAL",111:"BOS",112:"CHC",113:"CIN",114:"CLE",
+            115:"COL",116:"DET",117:"HOU",118:"KC",119:"LAD",120:"WSH",121:"NYM",
+            133:"ATH",134:"PIT",135:"SD",136:"SEA",137:"SF",138:"STL",139:"TB",
+            140:"TEX",141:"TOR",142:"MIN",143:"PHI",144:"ATL",145:"CWS",146:"MIA",
+            147:"NYY",158:"MIL"
+        }
+        if team_id in preferred:
+            return preferred[team_id]
         words = str(name or "---").split()
         return ("".join(w[0] for w in words[-3:]) or "---").upper()[:3]
 
+    def matching_games(self):
+        req = self.config.required_status
+        if not req:
+            return list(self.games)
+        return [g for g in self.games if g.status_class == req]
+
     def populated(self):
-        # Always render. This makes NO GAME / BAD TEAM / API ERR diagnostic states
-        # visible instead of silently dropping the screen from rotation.
-        return True
+        return bool(self.matching_games())
+
+    def can_show(self):
+        # required_status is enforced here because Bullpen does not pass plugin
+        # screens through the built-in game-rule machinery.
+        return self.populated()

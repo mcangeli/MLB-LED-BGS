@@ -1,8 +1,9 @@
 {
   "plugins": {
     "green_monster": {
-      "team": "Braves",
       "refresh_rate": 10,
+      "inning_page_seconds": 5,
+      "game_cycle_seconds": 15,
       "background": [
         18,
         83,
@@ -20,9 +21,30 @@
       ]
     }
   },
-  "rotation_screen": {
-    "kind": "green_monster",
-    "seconds": 20,
-    "with_priority": 0
+  "rotation_screen_examples": {
+    "team_live": {
+      "kind": "green_monster",
+      "teams": [
+        "Braves"
+      ],
+      "required_status": "live",
+      "seconds": 20
+    },
+    "division_live": {
+      "kind": "green_monster",
+      "divisions": [
+        "NL East"
+      ],
+      "required_status": "live",
+      "seconds": 20
+    },
+    "league_live": {
+      "kind": "green_monster",
+      "leagues": [
+        "NL"
+      ],
+      "required_status": "live",
+      "seconds": 20
+    }
   }
 }
