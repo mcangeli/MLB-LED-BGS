@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mlb-led-scoreboard-green-monster"
+version = "1.0.0"
+description = "Fenway Green Monster-style game display plugin for MLB-LED-Scoreboard"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["MLB_StatsAPI>=1.9.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.entry-points.'bullpen.mlbled.plugin']
+"green_monster" = "mlb_led_scoreboard_green_monster:load"
