@@ -1,10 +1,8 @@
 {
   "plugins": {
     "green_monster": {
-      "team": "Red Sox",
-      "refresh_rate": 5,
-      "show_no_game": true,
-      "show_probable_pitchers": true,
+      "team": "Braves",
+      "refresh_rate": 10,
       "background": [
         18,
         83,
@@ -24,6 +22,7 @@
   },
   "rotation_screen": {
     "kind": "green_monster",
-    "priority": 2
+    "seconds": 20,
+    "with_priority": 0
   }
 }

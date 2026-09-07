@@ -1,17 +1,91 @@
+import json
+import sys
+from pathlib import Path
+
 from bullpen import api
 from bullpen.logging import LOGGER
 
+
+PLUGIN_CONFIG_KEYS = (
+    "green_monster",
+    "green-monster",
+    "green_monster_scoreboard",
+    "green-monster-scoreboard",
+)
+
+
+def _active_config_path() -> Path | None:
+    """Best-effort lookup of the same JSON file MLB-LED-Scoreboard is using."""
+    config_arg = None
+
+    for index, arg in enumerate(sys.argv):
+        if arg.startswith("--config="):
+            config_arg = arg.split("=", 1)[1]
+            break
+        if arg == "--config" and index + 1 < len(sys.argv):
+            config_arg = sys.argv[index + 1]
+            break
+
+    try:
+        from data.paths import CURRENT_DIRECTORY, ROOT_DIRECTORY
+    except Exception:
+        CURRENT_DIRECTORY = Path.cwd()
+        ROOT_DIRECTORY = Path.cwd()
+
+    if config_arg:
+        return (Path(CURRENT_DIRECTORY) / config_arg).with_suffix(".json")
+
+    return Path(ROOT_DIRECTORY) / "config.json"
+
+
+def _fallback_plugin_config() -> tuple[dict, str | None]:
+    """Read the active config directly if Bullpen supplied an empty section.
+
+    Bullpen's supported path remains `base.plugin_config`. This fallback exists
+    to make the plugin tolerant of older/configurator-generated plugin key names.
+    """
+    path = _active_config_path()
+    if path is None or not path.is_file():
+        return {}, None
+
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            root = json.load(handle)
+    except Exception:
+        LOGGER.exception("Green Monster could not read fallback config from %s", path)
+        return {}, None
+
+    plugins = root.get("plugins", {})
+    if not isinstance(plugins, dict):
+        return {}, None
+
+    for key in PLUGIN_CONFIG_KEYS:
+        section = plugins.get(key)
+        if isinstance(section, dict) and (
+            section.get("team")
+            or (isinstance(section.get("teams"), list) and section.get("teams"))
+        ):
+            return section, key
+
+    return {}, None
+
+
 class Config(api.PluginConfig):
     def __init__(self, base: api.MLBConfig) -> None:
-        cfg = base.plugin_config or {}
+        # Normal Bullpen path. For the registered entry point "green_monster",
+        # this is config.json -> plugins -> green_monster.
+        cfg = dict(base.plugin_config or {})
+        source = "Bullpen plugins.green_monster"
 
-        # Bullpen passes config.json -> plugins -> green_monster here.
-        #
-        # "team" is intentionally REQUIRED. Previous versions silently defaulted
-        # to Boston, which made a missing/misplaced config look like valid data.
+        # Compatibility fallback. This is especially useful for configuration
+        # tools that derive their JSON key from the repository/package name.
+        if not cfg.get("team") and not cfg.get("teams"):
+            fallback, key = _fallback_plugin_config()
+            if fallback:
+                cfg = fallback
+                source = f"config.json plugins.{key} compatibility fallback"
+
         team = cfg.get("team")
-
-        # Be forgiving if somebody used the common `teams: ["PHI"]` spelling.
         if not team:
             teams = cfg.get("teams")
             if isinstance(teams, list) and teams:
@@ -25,9 +99,15 @@ class Config(api.PluginConfig):
         self.parse_today = base.parse_today
 
         if self.team:
-            LOGGER.info("Green Monster configured team: %s", self.team)
+            LOGGER.info(
+                "Green Monster configured team: %s (source: %s)",
+                self.team,
+                source,
+            )
         else:
             LOGGER.error(
-                'Green Monster has no team configured. Expected '
-                'config.json -> plugins -> green_monster -> team'
+                "Green Monster team is not configured. "
+                "Expected config.json -> plugins -> green_monster -> team. "
+                "Also checked compatibility keys: %s",
+                ", ".join(PLUGIN_CONFIG_KEYS[1:]),
             )
