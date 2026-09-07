@@ -1,6 +1,6 @@
 # Green Monster Scoreboard
 
-**Version 1.5.1**
+**Version 1.5.2**
 
 Green Monster Scoreboard is a Bullpen plugin for
 [MLB-LED-Scoreboard](https://github.com/MLB-LED-Scoreboard/mlb-led-scoreboard).
@@ -15,6 +15,7 @@ The primary target is a **64x32 LED matrix**.
 - Away and home team abbreviations.
 - Runs / Hits / Errors.
 - Eight innings per page on 64x32.
+- Live outs indicator beneath the R/H/E block on 64x32.
 - Automatic paging for innings 9+.
 - Team targeting.
 - Division targeting.
@@ -183,6 +184,47 @@ Example:
 
 `live_in_inning` excludes middle/end-of-inning breaks.
 
+
+## No team selected
+
+If you omit `team`, `teams`, `divisions`, and `leagues` from
+`plugins.green_monster`, the plugin does not apply a club filter.
+
+That means it considers **all MLB games for the scoreboard's effective date**.
+
+For example:
+
+```json
+"plugins": {
+  "green_monster": {
+    "required_status": "live",
+    "game_cycle_seconds": 15
+  }
+}
+```
+
+will cycle through all games that are currently live.
+
+If `required_status` is omitted as well:
+
+```json
+"plugins": {
+  "green_monster": {
+    "game_cycle_seconds": 15
+  }
+}
+```
+
+the plugin can cycle through all games on the day's schedule. Games are
+prioritized internally with live games first, followed by pregame and completed
+games.
+
+The amount of time each matching game stays on screen is controlled by:
+
+```json
+"game_cycle_seconds": 15
+```
+
 ## Team configuration
 
 One team:
@@ -296,6 +338,24 @@ Configure the paging interval with:
 "inning_page_seconds": 5
 ```
 
+
+## Outs indicator
+
+On a 64x32 matrix, v1.5.2 displays the number of outs beneath the R/H/E block
+while a game is live.
+
+Example:
+
+```text
+       1 2 3 4 5 6 7 8   R H E
+ATL    0 1 0 0 2 0 0 1   4 8 0
+PHI    0 0 0 1 0 0 0 0   1 5 1
+                         O2
+```
+
+`O0`, `O1`, or `O2` is shown for live games. The indicator is hidden for
+pregame and completed games.
+
 ## Why priority and required_status are split
 
 The MLB-LED-Scoreboard core owns screen rotation and validates `config.json`
@@ -359,6 +419,13 @@ Green Monster v1.5.1 selection teams=['Braves'] divisions=* leagues=* required_s
 ```
 
 ## Version history
+
+### 1.5.2
+
+- Added a live outs indicator beneath the R/H/E block on 64x32 matrices.
+- Tightened vertical spacing slightly to make room for the outs indicator.
+- Documented all-games behavior when no team/division/league selector is set.
+- Clarified that `required_status: "live"` with no selector cycles all live MLB games.
 
 ### 1.5.1
 
