@@ -48,7 +48,7 @@ class Config(api.PluginConfig):
         self.parse_today = base.parse_today
 
         LOGGER.info(
-            "Green Monster v1.5.3 selection teams=%s divisions=%s leagues=%s required_status=%s",
+            "Green Monster v1.5.4 selection teams=%s divisions=%s leagues=%s required_status=%s",
             self.teams or "*",
             self.divisions or "*",
             self.leagues or "*",

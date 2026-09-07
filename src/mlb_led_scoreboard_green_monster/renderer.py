@@ -59,14 +59,23 @@ class Renderer(api.PluginRenderer):
         self._text(graphics, canvas, 24, 27, fg, f"{g.home.hits}{g.home.errors}")
 
     def _monster(self, canvas, graphics, fg, dim, g, elapsed):
-        # v1.5.0: exactly eight innings per page on 64x32.
-        header_y, away_y, home_y = 7, 17, 27
+        # 64x32 Green Monster layout:
+        # - eight innings per page
+        # - two-digit-safe Runs and Hits
+        # - compact Errors field
+        # - live outs indicator below R/H/E
+        header_y, away_y, home_y = 6, 15, 24
         team_x = 1
-        inning_start = 16
-        spacing = 4
-        rhe_start = 51
 
-        # Page 1 = 1-8. Once inning 9 exists, alternate 1-8 and 9-16.
+        inning_start = 15
+        inning_spacing = 4
+
+        # Right-side totals block. These are intentionally defined locally so
+        # every render call has a complete, self-contained geometry.
+        rhe_r_x = 48
+        rhe_h_x = 54
+        rhe_e_x = 60
+
         max_inning = max(g.inning, len(g.away.innings), len(g.home.innings), 1)
         page_count = max(1, (max_inning + 7) // 8)
         page = int(elapsed // self.config.inning_page_seconds) % page_count
@@ -76,15 +85,20 @@ class Renderer(api.PluginRenderer):
 
         for slot in range(8):
             inning_num = inning_offset + slot + 1
-            x = inning_start + slot * spacing
-            # Use the ones digit for 10+ innings to preserve the 4px columns.
-            # The page marker at x=12 distinguishes the 9+ page.
+            x = inning_start + slot * inning_spacing
+
+            # Keep inning headers one glyph wide on extra-inning pages.
             label = str(inning_num) if inning_num < 10 else str(inning_num % 10)
             self._text(graphics, canvas, x, header_y, fg, label)
-            self._text(graphics, canvas, x, away_y, fg, self._inning_display(g.away.innings, inning_num - 1))
-            self._text(graphics, canvas, x, home_y, fg, self._inning_display(g.home.innings, inning_num - 1))
+            self._text(
+                graphics, canvas, x, away_y, fg,
+                self._inning_display(g.away.innings, inning_num - 1)
+            )
+            self._text(
+                graphics, canvas, x, home_y, fg,
+                self._inning_display(g.home.innings, inning_num - 1)
+            )
 
-        # Small page marker: "1" = innings 1-8, "2" = 9-16, etc.
         if page_count > 1:
             self._text(graphics, canvas, 11, header_y, dim, str(page + 1))
 
@@ -95,14 +109,26 @@ class Renderer(api.PluginRenderer):
         self._text(graphics, canvas, rhe_h_x, header_y, fg, "H")
         self._text(graphics, canvas, rhe_e_x, header_y, fg, "E")
 
-        for y, t in ((away_y, g.away), (home_y, g.home)):
-            self._draw_right_aligned(graphics, canvas, rhe_r_x + 4, y, fg, self._total_display(t.runs))
-            self._draw_right_aligned(graphics, canvas, rhe_h_x + 4, y, fg, self._total_display(t.hits))
-            self._draw_right_aligned(graphics, canvas, rhe_e_x + 2, y, fg, self._error_display(t.errors))
+        for y, team in ((away_y, g.away), (home_y, g.home)):
+            self._draw_right_aligned(
+                graphics, canvas, rhe_r_x + 4, y, fg,
+                self._total_display(team.runs)
+            )
+            self._draw_right_aligned(
+                graphics, canvas, rhe_h_x + 4, y, fg,
+                self._total_display(team.hits)
+            )
+            self._draw_right_aligned(
+                graphics, canvas, rhe_e_x + 2, y, fg,
+                self._error_display(team.errors)
+            )
 
-        graphics.DrawLine(canvas, 0, 9, min(canvas.width - 1, 63), 9, dim)
-        graphics.DrawLine(canvas, 14, 0, 14, min(canvas.height - 1, 31), dim)
-        graphics.DrawLine(canvas, 49, 0, 49, min(canvas.height - 1, 31), dim)
+        graphics.DrawLine(canvas, 0, 8, min(canvas.width - 1, 63), 8, dim)
+        graphics.DrawLine(canvas, 13, 0, 13, min(canvas.height - 1, 31), dim)
+        graphics.DrawLine(canvas, 46, 0, 46, min(canvas.height - 1, 31), dim)
+
+        if canvas.height <= 32 and g.status_class == "live":
+            self._text(graphics, canvas, 49, 31, dim, f"O{g.outs}")
 
         if canvas.height > 32:
             footer = (

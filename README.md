@@ -1,6 +1,6 @@
 # Green Monster Scoreboard
 
-**Version 1.5.3**
+**Version 1.5.4**
 
 Green Monster Scoreboard is a Bullpen plugin for
 [MLB-LED-Scoreboard](https://github.com/MLB-LED-Scoreboard/mlb-led-scoreboard).
@@ -442,6 +442,15 @@ Green Monster v1.5.1 selection teams=['Braves'] divisions=* leagues=* required_s
 ```
 
 ## Version history
+
+### 1.5.4
+
+- Fixed a renderer regression in v1.5.3 where the R/H/E coordinate variables
+  were referenced before being defined.
+- Restored reliable service startup/rendering.
+- Kept two-digit-safe Runs and Hits totals.
+- Kept the 8-inning paging layout and live outs indicator.
+- Added stronger source validation for the renderer before packaging.
 
 ### 1.5.3
 
