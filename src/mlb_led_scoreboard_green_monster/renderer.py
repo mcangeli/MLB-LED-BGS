@@ -81,8 +81,8 @@ class Renderer(api.PluginRenderer):
             # The page marker at x=12 distinguishes the 9+ page.
             label = str(inning_num) if inning_num < 10 else str(inning_num % 10)
             self._text(graphics, canvas, x, header_y, fg, label)
-            self._text(graphics, canvas, x, away_y, fg, self._inning(g.away.innings, inning_num - 1))
-            self._text(graphics, canvas, x, home_y, fg, self._inning(g.home.innings, inning_num - 1))
+            self._text(graphics, canvas, x, away_y, fg, self._inning_display(g.away.innings, inning_num - 1))
+            self._text(graphics, canvas, x, home_y, fg, self._inning_display(g.home.innings, inning_num - 1))
 
         # Small page marker: "1" = innings 1-8, "2" = 9-16, etc.
         if page_count > 1:
@@ -91,12 +91,14 @@ class Renderer(api.PluginRenderer):
         self._text(graphics, canvas, team_x, away_y, fg, g.away.abbr)
         self._text(graphics, canvas, team_x, home_y, fg, g.home.abbr)
 
-        for j, label in enumerate("RHE"):
-            x = rhe_start + j * 4
-            self._text(graphics, canvas, x, header_y, fg, label)
+        self._text(graphics, canvas, rhe_r_x, header_y, fg, "R")
+        self._text(graphics, canvas, rhe_h_x, header_y, fg, "H")
+        self._text(graphics, canvas, rhe_e_x, header_y, fg, "E")
+
         for y, t in ((away_y, g.away), (home_y, g.home)):
-            for j, val in enumerate((t.runs, t.hits, t.errors)):
-                self._text(graphics, canvas, rhe_start + j * 4, y, fg, str(val))
+            self._draw_right_aligned(graphics, canvas, rhe_r_x + 4, y, fg, self._total_display(t.runs))
+            self._draw_right_aligned(graphics, canvas, rhe_h_x + 4, y, fg, self._total_display(t.hits))
+            self._draw_right_aligned(graphics, canvas, rhe_e_x + 2, y, fg, self._error_display(t.errors))
 
         graphics.DrawLine(canvas, 0, 9, min(canvas.width - 1, 63), 9, dim)
         graphics.DrawLine(canvas, 14, 0, 14, min(canvas.height - 1, 31), dim)
@@ -111,8 +113,38 @@ class Renderer(api.PluginRenderer):
             self._text(graphics, canvas, 1, 41, fg, footer[:20])
 
     @staticmethod
-    def _inning(values, i):
-        return values[i] if i < len(values) else "-"
+    def _inning_display(values, i):
+        if i >= len(values):
+            return "-"
+        value = values[i]
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            return str(value)[:1]
+        if number >= 10:
+            return "+"
+        return str(number)
+
+    @staticmethod
+    def _total_display(value):
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            return "?"
+        return str(number) if number <= 99 else "99"
+
+    @staticmethod
+    def _error_display(value):
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            return "?"
+        return str(number) if number <= 9 else "+"
+
+    def _draw_right_aligned(self, graphics, canvas, right_x, y, color, text):
+        text = str(text)
+        x = int(right_x - max(0, len(text) - 1) * 4)
+        self._text(graphics, canvas, x, y, color, text)
 
     def _text(self, graphics, canvas, x, y, color, text):
         graphics.DrawText(canvas, self.font["font"], int(x), int(y), color, str(text))

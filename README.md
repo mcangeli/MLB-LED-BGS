@@ -1,6 +1,6 @@
 # Green Monster Scoreboard
 
-**Version 1.5.2**
+**Version 1.5.3**
 
 Green Monster Scoreboard is a Bullpen plugin for
 [MLB-LED-Scoreboard](https://github.com/MLB-LED-Scoreboard/mlb-led-scoreboard).
@@ -16,6 +16,8 @@ The primary target is a **64x32 LED matrix**.
 - Runs / Hits / Errors.
 - Eight innings per page on 64x32.
 - Live outs indicator beneath the R/H/E block on 64x32.
+- Two-digit-safe Runs and Hits totals.
+- Overflow-safe inning cells for rare 10+ run innings.
 - Automatic paging for innings 9+.
 - Team targeting.
 - Division targeting.
@@ -339,6 +341,27 @@ Configure the paging interval with:
 ```
 
 
+
+## Double-digit scores and totals
+
+Version 1.5.3 makes the 64x32 totals area safe for double-digit values.
+
+Runs and Hits use two-character fields:
+
+```text
+      1 2 3 4 5 6 7 8   R  H E
+ATL   2 0 4 1 3 2 0 0  12 15 1
+PHI   0 1 0 0 2 0 0 1   4  8 0
+                        O2
+```
+
+If a team scores 10 or more runs in a single inning, that inning cell displays
+`+` instead of overlapping the next inning column. The full Runs total remains
+accurate in the R column.
+
+Runs and Hits display normally through 99. Errors use a one-character field;
+10+ errors display `+`.
+
 ## Outs indicator
 
 On a 64x32 matrix, v1.5.2 displays the number of outs beneath the R/H/E block
@@ -419,6 +442,13 @@ Green Monster v1.5.1 selection teams=['Braves'] divisions=* leagues=* required_s
 ```
 
 ## Version history
+
+### 1.5.3
+
+- Made Runs and Hits totals two-digit safe on 64x32.
+- Added right-aligned R/H totals.
+- Added `+` overflow marker for innings with 10 or more runs.
+- Preserved eight-inning paging and the live outs indicator.
 
 ### 1.5.2
 
